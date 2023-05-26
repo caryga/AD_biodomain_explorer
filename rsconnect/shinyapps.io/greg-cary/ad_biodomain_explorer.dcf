@@ -1,0 +1,11 @@
+name: ad_biodomain_explorer
+title:
+username:
+account: greg-cary
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9187390
+bundleId: 7263620
+url: https://greg-cary.shinyapps.io/ad_biodomain_explorer/
+when: 1685038032.03205
+lastSyncTime: 1685038032.03219
