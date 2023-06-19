@@ -14,12 +14,25 @@ require(sna)
 require(intergraph)
 require(fst)
 library(igraph)
+library(GGally)
 library(shiny)
 library(tidyverse)
 
 theme_set(theme_bw(base_size = 14))
 
 # profvis::profvis({
+
+map_viridis <- function(vec, num) {
+  
+  vector_expanded <-round(vec, 1) * 10 # expand to allow for decimal precision
+  vector_exp_range <- max(vector_expanded) - min(vector_expanded) 
+  
+  colour_vector <- viridis(vector_exp_range + 1, option = 'viridis') # get vector of colour values for all possible decimals between min and max value
+  value_to_colour <- colour_vector[num * 10 - min(vector_expanded) + 1] # retrieve colour value for number
+  
+  return(value_to_colour)
+  
+}
 
 # Load Pre-formatted Data -------------------------------------------------
 
@@ -28,9 +41,8 @@ theme_set(theme_bw(base_size = 14))
 ##
 
 biodom_genes = fst::read.fst('data/biodom_genes.fst') %>% as_tibble()
-term_graph = readRDS('data/term_graph.rds')
 dom.cols = readRDS('data/dom_cols.rds')
-
+term.graph = readRDS('data/term_graph.rds')
 
 # Shiny App ---------------------------------------------------------------------
 
@@ -68,15 +80,32 @@ ui <- fluidPage(
       div(
         tags$head(tags$script(HTML(jscode))),
         
-        tagAppendAttributes(
-          textInput(inputId = "term_accession", 
-                    label = "Term Accession:",
-                    placeholder = 'e.g. GO:0005743'),
-          `data-proxy-click` = "update"),
+        # TODO: filter term choices by biodomain
         
-        br(),
-        strong('- or -'),
-        br(),
+        # radioButtons(
+        #   inputId = 'term_nw_select',
+        #   label = 'Select biodomain term network',
+        #   choiceNames = c('term annotation',
+        #                   'AD risk enriched',
+        #                   'AD genetic risk enriched',
+        #                   'AD transcriptome',
+        #                   'AD proteome'),
+        #   choiceValues = c('term.graph',
+        #                    'trs.graph',
+        #                    'gen.graph', 
+        #                    'txome.graph', 
+        #                    'pxome.graph'), 
+        #   selected = 'term.graph'
+        # ),
+        
+        # tagAppendAttributes(
+        #   textInput(inputId = "term_accession", 
+        #             label = "Term Accession:",
+        #             placeholder = 'e.g. GO:0005743'),
+        #   `data-proxy-click` = "update"),
+        # 
+        # strong('- or -'),
+        # br(),br(),
         
         tagAppendAttributes(
           selectizeInput(
@@ -91,6 +120,23 @@ ui <- fluidPage(
           `data-proxy-click` = "update"),
         
         hr(),
+        
+        radioButtons(inputId = "node_color", 
+                    label = "Color Nodes By:",
+                    choiceNames = c('Genetics NES', 'Genetics p.adjust',
+                                     'Omics NES', 'Omics p.adjust',
+                                     'proteomics NES', 'proteomics p.adjust',
+                                     'transcriptomics NES', 'transcriptomics p.adjust',
+                                     'TRS NES', 'TRS p.adjust'),
+                    choiceValues = c('gen_NES', 'gen_padj',
+                                'omic_NES', 'omic_padj',
+                                'pro_NES', 'pro_padj',
+                                'rna_NES', 'rna_padj',
+                                'trs_NES', 'trs_padj'),
+                    selected = 'trs_padj'),
+        
+        br(),
+        
         selectInput(inputId = "edge_depth", 
                     label = "Edge Depth:",
                     choices = c(1,2,3),
@@ -98,7 +144,7 @@ ui <- fluidPage(
         br(),
         sliderInput(inputId = "edge_kappa_coefficient", 
                     label = "Edge Kappa Coefficient:",
-                    min = 0.1, max = 1, value = 0.8, step = 0.01),
+                    min = 0.1, max = 1, value = 0.5, step = 0.1),
         
         hr(),
         actionButton("update", "Plot", class = "btn-primary"),
@@ -143,92 +189,109 @@ server <- function(input, output, session) {
   # biodomain plot ----    
   observe({
     
+    # # pull GO ID from query inputs
+    # if( !is.null(input$term_name) ){
+      
+    tg.terms <- biodom_genes %>% 
+      filter(GOterm_Name == input$term_name) %>% 
+      select(GO_ID, GOterm_Name, Biodomain) %>% 
+      distinct()
+    
+    tg_id = unique(tg.terms$GO_ID)
+    tg_name = unique(tg.terms$GOterm_Name)
+      
+    # } else if( !is.null(input$term_accession) ){
+    #   
+    #   tg.terms <- biodom_genes %>% 
+    #     filter(GO_ID == input$term_accession) %>% 
+    #     select(GO_ID, GOterm_Name, Biodomain) %>% 
+    #     distinct()
+    #   
+    #   tg_id = unique(tg.terms$GO_ID)
+    #   tg_name = unique(tg.terms$GOterm_Name)
+    #   
+    # } 
+    
+    # graph = eval(parse(text = input$term_nw_select))
+    graph = term.graph
     depth = input$edge_depth
     kappa_thresh = input$edge_kappa_coefficient
+    node_attr = input$node_color
     
     # remove edges below kappa score threshold
-    sub.g = igraph::delete.edges(
-      term_graph , 
-      edges = igraph::E(term_graph)[ igraph::E(term_graph)$kappa < kappa_thresh ] 
-      )
+    sub.g = igraph::delete.edges(graph ,  
+                         edges = E(graph)[ E(graph)$kappa < kappa_thresh ] )
     
-    # pull GO ID from query inputs
-    if( !is.null(input$term_name) ){
-      
-      tg.terms <- biodom_genes %>% 
-        filter(GOterm_Name == input$term_name) %>% 
-        select(GO_ID, GOterm_Name, Biodomain) %>% 
-        distinct()
-      
-      tg_id = unique(tg.terms$GO_ID)
-      tg_name = unique(tg.terms$GOterm_Name)
-      
-    } else if( !is.null(input$term_accession) ){
-      
-      tg.terms <- biodom_genes %>% 
-        filter(GO_ID == input$term_accession) %>% 
-        select(GO_ID, GOterm_Name, Biodomain) %>% 
-        distinct()
-      
-      tg_id = unique(tg.terms$GO_ID)
-      tg_name = unique(tg.terms$GOterm_Name)
-      
-    } 
+    # if( 'n_le_genes' %in% vertex_attr_names(sub.g) ){
+    #   sub.g = delete.vertices(sub.g,
+    #                           v = V(sub.g)[ !is.na(V(sub.g)$none) & V(sub.g)$none == 1]
+    #                           )
+    # }
     
     # identify terms N hops away from the query
-    terms <- bfs(sub.g, tg_id, dist = T)
-    terms <- terms$dist[terms$dist <= depth] %>% names()
+    terms <- igraph::neighborhood(sub.g, order = depth, nodes = tg_id)[[1]]
     
     # remove terms not annotated to term
-    sub.g <- igraph::delete.vertices(
-      sub.g, igraph::V(sub.g)[ 
-        !(igraph::V(sub.g)$name %in% unique(terms)
-          | !is.na(igraph::V(sub.g)$label) ) 
-      ]
-    )
-    
-    # Get the unconnected nodes.
-    unconnected_nodes <- which(igraph::degree(sub.g) == 0)
+    term.g <- igraph::delete.vertices(
+      sub.g, 
+      V(sub.g)[ !( V(sub.g) %in% unique(terms) ) & V(sub.g)$bd == F ]
+      )
     
     # Remove the unconnected nodes.
-    sub.g <- igraph::delete.vertices(sub.g, unconnected_nodes)
+    unconnected_nodes <- which( igraph::degree(term.g) == 0 )
+    term.g <- igraph::delete.vertices(term.g, unconnected_nodes)
     
     # remove redundant edges 
-    simpl <- igraph::simplify(sub.g, edge.attr.comb = c(kappa = 'max'))
+    simpl <- igraph::simplify(term.g, edge.attr.comb = c(kappa = 'max'))
     
     # add node degree to graph
-    igraph::V(simpl)$degree <- igraph::degree(simpl)
+    V(simpl)$degree <- igraph::degree(simpl)
+    V(simpl)$degree[ which( V(simpl)$bd ) ] <- max(igraph::degree(simpl), na.rm = T) *1.5
     
-    igraph::V(simpl)$shape <- 20
-    igraph::V(simpl)$shape[ which( names(igraph::V(simpl)) == tg_id) ] <- 18
-    igraph::V(simpl)$color[ which( names(igraph::V(simpl)) == tg_id) ] <- 'red'
+    V(simpl)$shape <- 20
+    V(simpl)$shape[ which( names(V(simpl)) == tg_id) ] <- 18
     
-    # TODO: color term nodes based on risk enrichment?
+    # gen_NES gen_padj
+    # omic_NES omic_padj
+    # pro_NES pro_padj
+    # rna_NES rna_padj
+    # trs_NES trs_padj
+    
+    V(simpl)$plot_color <- map_chr( vertex_attr(simpl, node_attr) , ~ map_viridis( vertex_attr(sub.g, node_attr), .x))
+    V(simpl)$plot_color[ which( V(simpl)$bd ) ] <- V(simpl)$color[ which( V(simpl)$bd ) ]
     
     bd.nw <- suppressWarnings(
-      GGally::ggnet2( 
-        net = simpl, 
-        mode = 'kamadakawai',
-        edge.color = 'grey50', 
-        edge.lty = 3,
-        node.size = 'degree', 
-        max_size = 9,
-        node.color = 'color',
+      ggnet2(
+        net = simpl,
+        mode = 'spring',
+        edge.color = 'grey85',
+        # edge.lty = 3,
+        node.size = 'degree',
+        # max_size = 9,
+        node.color = 'plot_color',
         node.shape = 'shape',
         # node.alpha = 'degree',
-        label = 'abbr' , 
+        label = 'abbr' ,
         label.size = 3
-      ) + 
+      ) +
         theme(legend.position = 'none',
               plot.title = element_text(size = 10)) +
-        geom_point( aes(text = paste0(V(simpl)$term, '\n', V(simpl)$n_symbol, ' genes')),
-                    color = 'grey80', alpha = 0, size = 8) + #
+        geom_point( aes(text = paste0(V(simpl)$term, 
+                                      '\n', V(simpl)$n_symbol, ' genes',
+                                      '\npadj = ', signif( 
+                                        vertex_attr(simpl,
+                                                    node_attr %>% str_split_fixed(., '_', 2) %>% .[1] %>% paste0(., '_padj') )), 
+                                      '\nNES = ', signif( 
+                                        vertex_attr(simpl,
+                                                    node_attr %>% str_split_fixed(., '_', 2) %>% .[1] %>% paste0(., '_NES') ))
+                                        ) ),
+                    color = 'grey80', alpha = 0, size = 12) + #
         ggtitle(paste0(tg_name, ' (', tg_id,') network neighborhood'))
     )
     
-    rv$generate_bd_nw = bd.nw 
+    rv$generate_bd_nw = bd.nw
     
-  }) %>%  bindEvent(input$update, ignoreInit = F)
+  }) %>%  bindEvent(input$update, ignoreInit = T)
   
   
   # plot rendering ---- 

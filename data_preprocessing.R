@@ -12,84 +12,9 @@ theme_set(theme_bw(base_size = 14))
 
 # Load and format data -------------------------------------------
 
-####
-## TAD scores ----
-####
 # 
-# synapser::synLogin()
-# scores <- synapser::synTableQuery('select * from syn25575156')$filepath %>% read_csv() %>%
-#   select(ENSG, GeneName, Overall, rank= Overall_rank, Omics = OmicsScore,
-#          Genetics = GeneticsScore, Literature = LiteratureScore,
-#          Neuropath = NeuropathScore,
-#          Druggability = SM_Druggability_bucket,
-#          Safety = safety_bucket,
-#          Feasibility = feasibility_bucket) %>%
-#   # rowwise() %>%
-#   mutate(
-#     Druggability = 2*(max(Druggability, na.rm=T) + 1 - Druggability) / max(Druggability, na.rm=T),
-#     Safety = 2*(max(Safety, na.rm=T) + 1 - Safety) / max(Safety, na.rm=T),
-#     Feasibility = 2*(max(Feasibility, na.rm=T) + 1 - Feasibility) / max(Feasibility, na.rm=T),
-#   ) %>%
-#   pivot_longer(cols = c(Overall, Omics, Genetics, Literature, Neuropath, Druggability, Safety, Feasibility)) %>%
-#   mutate(
-#     name = fct_relevel(name, c('Feasibility','Safety','Druggability','Neuropath','Literature','Omics', 'Genetics','Overall')),
-#     value = case_when( value == 0 ~ NA_real_, T ~ value)
-#     ) %>%
-#   arrange(name)
-# 
-# # saveRDS(scores, 'data/scores.rds')
-# fst::write.fst(scores, 'data/scores.fst')
-# 
-# ####
-# ## DE meta-analyses ----
-# ####
-# 
-# omics <- read_csv( synapser::synTableQuery('select * from syn22758536')$filepath ) %>%
-#     select(GName, RNA_TE, RNA_fdr_CorPVal, Pro_TE, Pro_fdr_CorPVal) %>%
-#     pivot_longer(
-#         c(RNA_TE, Pro_TE), names_sep = '_', names_to = c('x', 'y'), values_to = 'TE'
-#     ) %>%
-#     pivot_longer(
-#         c(RNA_fdr_CorPVal, Pro_fdr_CorPVal), names_sep = '_', names_to = c('a', 'b'), values_to = 'fdr'
-#     ) %>%
-#     distinct() %>% filter(x == a) %>% select(-y, -a, -b) %>%
-#     mutate(x = str_replace_all(x, 'Pro','Protein'))
-# 
-# fst::write.fst(omics, 'data/omics.fst')
-# 
-# 
-# ####
-# ## Genetic Evidence ----
-# ####
-# 
-# synapser::synLogin()
-# gen <- synapser::synTableQuery('SELECT * FROM syn26844312')$filepath %>% read_csv() %>%
-#     filter(!is.na(GeneName), !duplicated(GeneName)) %>%
-#     mutate(
-#       meanRank_qtlFDR = if_else( meanRank_qtlFDR == 0, NA_real_, meanRank_qtlFDR)
-#        )%>%
-#     select(GeneName, score_rank,
-#            meanRank_gwasP, meanRank_qtlFDR,
-#            coding_variant_summary, noncoding_variant_summary,
-#            Hsap_pheno_score, Ortholog_pheno_score
-#            ) %>%
-#     pivot_longer(-c(GeneName,score_rank)) %>%
-#     mutate( name = fct_relevel(name,
-#                                c('Ortholog_pheno_score',
-#                                  'Hsap_pheno_score',
-#                                  'noncoding_variant_summary',
-#                                  'coding_variant_summary',
-#                                  'meanRank_qtlFDR',
-#                                  'meanRank_gwasP')),
-#             value = case_when( value == 0 ~ NA_real_, T ~ value)) %>%
-#     arrange( name )
-# 
-# # saveRDS(gen, 'data/gen.rds')
-# fst::write.fst(gen, 'data/genetics.fst')
-# 
-# ####
+
 # ## Gene-Biodomain mappings ----
-# ####
 # synapser::synLogin()
 # biodom_genes <- readRDS(synapser::synGet('syn25428992')$path) %>%
 #   select(Biodomain, GO_ID, hgnc_symbol) %>%
@@ -123,10 +48,9 @@ theme_set(theme_bw(base_size = 14))
 # 
 # fst::write.fst(biodom_genes, 'data/biodom_genes.fst')
 # 
-# ####
-# ## Biodom term NW ----
-# ####
-# 
+
+## Biodom term NW ----
+
 # synapser::synLogin()
 # biodom = readRDS(synapser::synGet('syn25428992')$path)
 # domains = biodom$Biodomain %>% unique() %>% sort()
@@ -161,6 +85,12 @@ theme_set(theme_bw(base_size = 14))
 #          n_gene1 > 3,
 #          n_gene2 > 3)
 # 
+# gen <- read_csv(synapser::synGet('syn45824969')$path)
+# omic <- read_csv(synapser::synGet('syn45824835')$path)
+# pro <- read_csv(synapser::synGet('syn45824870')$path)
+# rna <- read_csv(synapser::synGet('syn45824913')$path)
+# trs <- read_csv(synapser::synGet('syn45824995')$path)
+# 
 # nw <- biodom %>%
 #   select(n1 = GO_ID, n2 = Biodomain) %>%
 #   mutate(kappa = 1) %>%
@@ -179,9 +109,32 @@ theme_set(theme_bw(base_size = 14))
 #          term_size = rank(term_size, ties.method = 'first'),
 #          term_size = term_size / max(term_size),
 #          term_size = if_else( n == term, term_size*3, term_size),
+#          bd = if_else( n == term, T, F),
 #          color = case_when( is.na(color) ~ 'grey80', T ~ color)
 #   ) %>%
 #   filter(!duplicated(n))
+# 
+# v <- v %>%
+#   left_join(.,
+#             gen %>% filter(padj <= 0.05) %>% select(n = ID, gen_NES = NES, gen_padj = padj)) %>%
+#   left_join(.,
+#             omic %>% filter(padj <= 0.05) %>% select(n = ID, omic_NES = NES, omic_padj = padj)) %>%
+#   left_join(.,
+#             pro %>% filter(padj <= 0.05) %>% select(n = ID, pro_NES = NES, pro_padj = padj)) %>%
+#   left_join(.,
+#             rna %>% filter(padj <= 0.05) %>% select(n = ID, rna_NES = NES, rna_padj = padj)) %>%
+#   left_join(.,
+#             trs %>% filter(padj <= 0.05) %>% select(n = ID, trs_NES = NES, trs_padj = padj))
+# 
+# v <- distinct(v)
+# 
+# v <- v %>%
+#   mutate(
+#     across(contains('padj'), ~if_else(is.na(.x), 1, .x)),
+#     across(contains('NES'), ~if_else(is.na(.x), 0, .x))
+#     )
+# 
+# nrow(v) == length(V(g))
 # 
 # for(i in 2:ncol(v)){
 #   igraph::vertex_attr(g, names(v)[i], index = igraph::V(g)) <- v %>% pull(i)
@@ -189,201 +142,94 @@ theme_set(theme_bw(base_size = 14))
 # 
 # term_graph = g
 # 
-# # igraph::write.graph(g, 'data/term_graph.graphml', format = 'graphml')
-# saveRDS(g, 'data/term_graph.rds')
+# igraph::write.graph(g, 'AD_biodomain_explorer/data/term_graph.graphml', format = 'graphml')
+# saveRDS(g, 'AD_biodomain_explorer/data/term_graph.rds')
+
+
+
+# # bd terms to add ---------------------------------------------------------
 # 
-# ####
-# ## SEA-AD snRNAseq data ----
-# ####
+# bd.e <- biodom_genes %>% filter(!is.na(GO_ID), !is.na(Biodomain)) %>% 
+#   select(n1 = GO_ID, n2 = Biodomain) %>% distinct() 
 # 
-# seaad <- read_csv( synapser::synGet('syn51197803')$path, col_types = cols() ) %>%
-#   filter( mean_exp > 0 ) %>%
+# bd.v <- biodom_genes %>% filter(!is.na(Biodomain)) %>% 
+#   select(term = Biodomain) %>% distinct() %>% 
 #   mutate(
-#     group = factor(group, c( 'High',  'Intermediate','Low', 'Not AD', 'Dementia', 'No dementia')),
-#     broad1 = as.factor(broad) %>% as.numeric(),
-#     broad2 = case_when(group == 'Dementia' ~ broad1+.25,
-#                         group == 'No dementia' ~ broad1-.25,
-#                         group == 'High' ~ broad1+.25,
-#                         group == 'Intermediate' ~ broad1+.125,
-#                         group == 'Low' ~ broad1-.125,
-#                         group == 'Not AD' ~ broad1-.25),
-#     et = case_when( group %in% c('No dementia','Dementia') ~ 'dem',
-#                     group %in% c('Not AD','Low','Intermediate','High')~'path' ),
-#     label = NA_character_
-#     ) %>%
-#   arrange(desc(mean_exp), desc(fraction_expressed))
+#     ont = NA,
+#     size = NA,
+#     n_le_genes = NA,
+#     NES = NA,
+#     padj = NA,
+#     `Mitochondrial Metabolism` = NA,
+#     none = NA,
+#     Synapse = NA,
+#     `Structural Stabilization` = NA,
+#     `Immune Response` = NA,
+#     `Oxidative Stress` = NA,
+#     `Lipid Metabolism` = NA,
+#     `Cell Cycle` = NA,
+#     Proteostasis = NA,
+#     Endolysosome = NA,
+#     Apoptosis = NA,
+#     Vasculature = NA,
+#     `Tau Homeostasis` = NA,
+#     Myelination = NA,
+#     `Metal Binding and Homeostasis` = NA,
+#     `APP Metabolism` = NA,
+#     Autophagy = NA,
+#     `RNA Spliceosome` = NA,
+#     Epigenetic = NA,
+#     `DNA Repair` = NA,
+#     name = term
+#   ) %>% pivot_longer(cols = everything()) %>% 
+#   group_by(name) %>% summarise(value = list(value)) %>% 
+#   pull(value, name = name)
+
+# y = tibble( na = vertex.attributes(trs.graph) ) %>%
+#   t() %>% as_tibble(rownames = NA, .name_repair = 'unique') %>% unnest(everything()) %>%
+#   rename_with(., ~names(vertex.attributes(trs.graph)), everything())
+
+# # risk graph --------------------------------------------------------------
 # 
-# seaad <- seaad %>% 
-#   arrange(gene) %>% 
-#   group_by(gene) %>% 
-#   arrange(desc(mean_exp), desc(fraction_expressed), .by_group = T)
+# synapser::synLogin()
+# trs.graph <- synGet('syn51387897')$path %>% igraph::read.graph(., format = 'graphml')
+# trs.graph <- igraph::add.vertices(trs.graph, nv = 19, attr = bd.v)
+# trs.graph <- igraph::add.edges( trs.graph, 
+#                                 bd.e %>% filter(n1 %in% names(V(x))) %>% select(n1,n2) %>% 
+#                                   pivot_longer(everything()) %>% pull(value) , 
+#                                 attr = list('kappa'=1))
+# saveRDS(trs.graph, 'trs_graph.rds')
+
+# # genetics graph ----------------------------------------------------------
 # 
-# gene_idx = tibble(gene = unique(seaad$gene)) %>% 
-#   rowwise() %>% 
-#   mutate(
-#     start = which(seaad$gene == gene) %>% min(),
-#     end = which(seaad$gene == gene) %>% max(),
-#     f_idx = NA,
-#     f_start = NA,
-#     f_end = NA
-#     )
+# synapser::synLogin()
+# gen.graph <- synGet('syn51317242')$path %>% igraph::read.graph(., format = 'graphml')
+# gen.graph <- igraph::add.vertices(gen.graph, nv = 19, attr = bd.v)
+# gen.graph <- igraph::add.edges( gen.graph, 
+#                                 bd.e %>% filter(n1 %in% names(V(x))) %>% select(n1,n2) %>% 
+#                                   pivot_longer(everything()) %>% pull(value) , 
+#                                 attr = list('kappa'=1))
+# saveRDS(gen.graph, 'gen_graph.rds')
+
+# # txome graph -------------------------------------------------------------
 # 
-# # split up and save to local data/ dir
-# idx = 1
-# spl = 2000
-# future::plan('multisession')
-# for(i in seq(1, nrow(gene_idx), spl)){
-#   
-#   g_st = i
-#   g_end = i+(spl-1)
-#   if(g_end > nrow(gene_idx)){ g_end = nrow(gene_idx) }
-#   
-#   f_st = gene_idx$start[g_st]
-#   f_end =  gene_idx$end[g_end]
-#   if(f_end > nrow(seaad)){ f_end = nrow(seaad) }
-#   
-#   sub = seaad[f_st:f_end,]
-#   gene_idx$f_idx[g_st:g_end] <- idx
-#   gene_idx$f_start[g_st:g_end] <- furrr::future_map_dbl(
-#     gene_idx$gene[g_st:g_end], ~ which(sub$gene == .x) %>% min())
-#   gene_idx$f_end[g_st:g_end] <- furrr::future_map_dbl(
-#     gene_idx$gene[g_st:g_end], ~ which(sub$gene == .x) %>% max())
-#   
-#   fst::write.fst(sub, paste0('data/seaad_',idx,'.fst'))
-#   idx = idx+1
-#   
-# }
+# synapser::synLogin()
+# txome.graph <- synGet('syn51387896')$path %>% igraph::read.graph(., format = 'graphml')
+# txome.graph <- igraph::add.vertices(txome.graph, nv = 19, attr = bd.v)
+# txome.graph <- igraph::add.edges( txome.graph, 
+#                                 bd.e %>% filter(n1 %in% names(V(x))) %>% select(n1,n2) %>% 
+#                                   pivot_longer(everything()) %>% pull(value) , 
+#                                 attr = list('kappa'=1))
+# saveRDS(txome.graph, 'txome_graph.rds')
+
+# # protx graph -------------------------------------------------------------
 # 
-# fst::write.fst(gene_idx, 'data/seaad_gene_idx.fst')
-# 
-# ####
-# ## pre-calc SEA-AD violin plot ----
-# ####
-# 
-# compute_density = function(x, from, to, bw = 'nrd0', adjust = 1, kernel = 'gaussian'){
-#   nx <- length(x)
-#   w <- rep(1 / nx, nx)
-#   dens <- stats::density(x, weights = w, bw = 'nrd0', adjust = 5,
-#                          kernel = kernel, n = 512, from = from, to = to)
-#   tibble(
-#     x = dens$x,
-#     density = dens$y,
-#     scaled =  dens$y / max(dens$y, na.rm = TRUE),
-#     ndensity = dens$y / max(dens$y, na.rm = TRUE),
-#     count =   dens$y * nx,
-#     n = nx,
-#     .size = length(dens$x)
-#   )}
-# 
-# range <- range(seaad$mean_exp, na.rm = TRUE)
-# modifier <- 0
-# bw = stats::bw.nrd0(seaad$mean_exp)
-# pdat <- seaad %>%
-#   group_by(broad, broad1) %>%
-#   do(compute_density(.$mean_exp,
-#                      from = range[1] - modifier*bw,
-#                      to = range[2] + modifier*bw,
-#                      bw = bw,
-#                      adjust = 5)) %>%
-#   rename( mean_exp = x )
-# 
-# pdat <- rbind(pdat %>% mutate(broad1 = broad1 + scaled/2),
-#               pdat %>% mutate(broad1 = broad1 - scaled/2))
-# 
-# base_vp = ggplot(pdat, aes(broad1, mean_exp)) +
-#   geom_polygon(color = 'grey65', alpha = .3, aes(fill = broad)) +
-#   theme(legend.position = 'none')+
-#   # guides(fill = 'none', color = 'legend', size = 'legend' )+
-#   viridis::scale_fill_viridis(discrete = T, guide ='none',
-#                               begin = 0, end = .8,
-#                               option = 'D') +
-#   scale_x_continuous(breaks = 1:8,
-#                      labels = seaad$broad %>% unique() %>% sort()) +
-#   labs(x = '', y = 'mean expression, ln(UP10K+1)' )+
-#   theme(axis.title.x = element_blank())
-# 
-# saveRDS(base_vp, 'data/base_violin.rds')
-# 
-# rm(pdat, range, modifier, bw, compute_density)
-# 
-# ####
-# ## CRISPRbrain simple phenotype screens ----
-# ####
-# 
-# f = list.files( paste0('~/treatAD_hypothesis','/data/crispr_brain_data/'), pattern = '.csv')
-# simple <- map_dfr(
-#     f %>% str_subset('RNA|CROP', negate = T),
-#     ~ {
-#         read_csv( paste0('~/treatAD_hypothesis','/data/crispr_brain_data/',.x)) %>%
-#             mutate(cell = .x %>% str_split_fixed(.,'-(?!M)', 2) %>% as_tibble() %>% pull(1),
-#                    mode = .x %>% str_extract('CRISPR[ain]'),
-#                    expt = .x %>% str_remove_all('-CRISPR[ain].csv') %>%
-#                        str_split_fixed('-(?!M)',2) %>% as_tibble() %>% pull(2) ) %>%
-#             relocate(cell, mode, expt)
-#     }
-# ) %>%
-#     rename(pval = `P Value`, pheno = `Phenotype`, gene_score = `Gene Score`) %>%
-#     arrange(desc(abs(gene_score))) %>%
-#     mutate(x = paste0(mode, ': ', TSS ))
-# 
-# simple <- tibble( expt = simple$expt %>% unique() %>% sort(),
-#                   phenotype = c('Expansion (CD34 Staining)',
-#                                 'Reactive Oxygen Species (CellRox Intensity)',
-#                                 'Proliferation (CFSE Staining)',
-#                                 'Survival (14 day)', 'Survival (21 day)', 'Survival (28 day)',
-#                                 'Labile Iron (FeRhoNox Intensity)',
-#                                 'Immune Activation (CD38 levels)',
-#                                 'Lysosome Exocytosis (cell surface LAMP1), +IL1a +TNF +C1q',
-#                                 'Lysosome Exocytosis (cell surface LAMP1), Vehicle',
-#                                 'Peroxidized Lipids (Liperfluo intensity)',
-#                                 'Lysosome (LysoTracker intensity)',
-#                                 'Lysosome Mass or pH (LysoTracker staining), +IL1a +TNF +C1q',
-#                                 'Lysosome Mass or pH (LysoTracker staining), Vehicle',
-#                                 'Survival, no antioxidants',
-#                                 'Phagocytosis (pHRodo-rat synaptosomes)',
-#                                 'Phagocytosis (pHRodo-labeled synaptosomes), +IL1a +TNF +C1q',
-#                                 'Phagocytosis (pHRodo-labeled synaptosomes), Vehicle',
-#                                 'Survival, PSAP KO & no antioxidants',
-#                                 'Survival, PSAP KO',
-#                                 'Survival',
-#                                 'Survival-Proliferation',
-#                                 'Inflammatory activation (cell-surface VCAM1 levels), +IL1a +TNF +C1q')
-# ) %>% left_join(simple, . , by = 'expt')
-# 
-# fst::write.fst(simple, 'data/crispr_brain_simple_phenos.fst')
-# 
-# 
-# # deprecated --------------------------------------------------------------
-# 
-# ####
-# ## synapse upload ----
-# ####
-# # 
-# # synapser::synLogin()
-# # files = list.files('data', full.names = T) %>% str_subset('allen|_v1', negate = T)
-# # for(f in files){
-# #   foo <- synapser::synStore( synapser::File(f, parent = 'syn51174314') )
-# # }
-# 
-# ####
-# ## populate data/ dir with synapse download ----
-# ####
-# # 
-# # synapser::synLogin()
-# # files = synapser::synGetChildren('syn51174314')$asList() %>%
-# #   tibble(f = .) %>% unnest_wider(f)
-# # syn.date = str_split_fixed(files$modifiedOn, 'T', 2)[,1] %>% sort(decreasing = T) %>% .[1]
-# # if( !dir.exists('data') ){ dir.create('data')  }
-# # if( length(list.files('data')) == 0 ){
-# #   for(idx in 1:nrow(files)){
-# #     foo = synapser::synGet( files$id[idx], downloadLocation = paste0(here::here(), '/data/'))
-# #   }
-# # } else {
-# #   dir.date = file.info( list.files('data', full.names = T) ) %>% pull(mtime) %>% 
-# #     str_split_fixed(string = ., pattern = ' ', n = 2) %>% .[,1] %>% sort(decreasing = T) %>% .[1]
-# #   if( syn.date > dir.date ){
-# #     for(idx in 1:nrow(files)){
-# #       foo = synapser::synGet( files$id[idx], downloadLocation = paste0(here::here(), '/data/'))
-# #     }
-# #   }
-# # }
+# synapser::synLogin()
+# pxome.graph <- synGet('syn51317244')$path %>% igraph::read.graph(., format = 'graphml')
+# pxome.graph <- igraph::add.vertices(pxome.graph, nv = 19, attr = bd.v)
+# pxome.graph <- igraph::add.edges( pxome.graph, 
+#                                 bd.e %>% filter(n1 %in% names(V(x))) %>% select(n1,n2) %>% 
+#                                   pivot_longer(everything()) %>% pull(value) , 
+#                                 attr = list('kappa'=1))
+# saveRDS(pxome.graph, 'pxome_graph.rds')
+
